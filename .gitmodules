@@ -1,0 +1,9 @@
+[submodule "UART-Driver-Basic"]
+	path = UART-Driver-Basic
+	url = https://github.com/HamzaHoms/UART-Driver-Basic.git
+[submodule "Utils"]
+	path = Utils
+	url = https://github.com/HamzaHoms/Utils.git
+[submodule "USB-Wrapper"]
+	path = USB-Wrapper
+	url = https://github.com/HamzaHoms/USB-Wrapper.git

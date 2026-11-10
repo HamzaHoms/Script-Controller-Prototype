@@ -84,8 +84,8 @@ void Process(void*)
     {
       vTaskDelay(pdMS_TO_TICKS(50));
 
-      uint32_t usb_rx_cnt = FIFO_GetCount(usb._rx_fifo);
-      uint32_t uart_rx_cnt = FIFO_GetCount(wuart2._rx_fifo);
+      uint32_t usb_rx_cnt = FIFO_GetCount(&usb._rx_fifo);
+      uint32_t uart_rx_cnt = FIFO_GetCount(&wuart2._rx_fifo);
 
       if(usb_rx_cnt > 0)
 	{

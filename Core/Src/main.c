@@ -48,6 +48,8 @@
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
+TIM_HandleTypeDef htim5;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -59,7 +61,6 @@ DMA_HandleTypeDef hdma_usart2_rx;
 wUSBD usb;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 TaskHandle_t ProcessTask;
-TaskHandle_t cUARTTXTask;
 wUART wuart2;
 uint8_t n = 0;
 /* USER CODE END PV */
@@ -72,44 +73,65 @@ static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
+
 
 void Process(void*)
 {
-  uint8_t data_buf[128];
+  uint8_t num_buf[64];
+  uint32_t pckt_cnt = 0;
+  uint32_t num = 0;
+  uint32_t num_rec;
+  uint32_t errs = 0;
+  uint32_t trans_timestamp[1024];
+  uint32_t err_timestamp[1024];
+  uint32_t in_trans = 0;
+  uint32_t in_err = 0;
+
+  HAL_TIM_Base_Start(&htim5);
   wUART_OpenRXDMA(&wuart2);
-  uint8_t nl = '\n';
 
   while(1)
     {
-      vTaskDelay(pdMS_TO_TICKS(50));
+      ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
 
-      uint32_t usb_rx_cnt = FIFO_GetCount(&usb._rx_fifo);
-      uint32_t uart_rx_cnt = FIFO_GetCount(&wuart2._rx_fifo);
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-      if(usb_rx_cnt > 0)
+      while(FIFO_GetCount(&usb._rx_fifo) > 0)
 	{
-	  uint32_t pop_size = USB_ReadRXFIFO(&usb, data_buf, 128);
+	  uint32_t us_tick = htim5.Instance->CNT;
 
-	  wUART_WriteTX(&wuart2, data_buf, pop_size);
+	  pckt_cnt = USB_ReadRXFIFO(&usb, num_buf, 64);
 
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	  vTaskDelay(pdMS_TO_TICKS(100));
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+	  wUART_WriteTX(&wuart2, num_buf, pckt_cnt);
+
+	  memcpy(&num_rec, num_buf, 4);
+
+	  if(num_rec != num)
+	    {
+	      errs+= (num_rec - num);
+	      err_timestamp[in_err] = us_tick;
+	      in_err++;
+	    }
+
+	  num = num_rec + 1;
+	  trans_timestamp[in_trans] = us_tick;
+	  in_trans++;
+	  if(in_trans == 1024) break;
 	}
 
-      if(uart_rx_cnt > 0)
-	{
-	  uint32_t pop_size = wUART_ReadRXFIFO(&wuart2, data_buf, 128);
+      if(in_trans == 1024) break;
 
-	  USB_WriteTX(&usb, data_buf, pop_size);
-
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	  vTaskDelay(pdMS_TO_TICKS(100));
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	}
     }
 
+  while(1)
+    {
+      uint8_t buf[6] = "DONE\n";
+      USB_WriteTX(&usb, buf, 6);
+
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
 void ProcessTaskNotify(void)
@@ -159,12 +181,15 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   MX_I2C2_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 
   USB_Init(&usb, &hUsbDeviceFS);
+  USB_SetDRCallback(&usb, ProcessTaskNotify);
+
   wUART_Init(&wuart2, &huart2);
 
-  xTaskCreate(Process, "Process USB", 256, NULL, 1, &ProcessTask);
+  xTaskCreate(Process, "Process USB", 4096, NULL, 1, &ProcessTask);
 
   vTaskStartScheduler();
 
@@ -291,6 +316,51 @@ static void MX_I2C2_Init(void)
   /* USER CODE BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 95;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 4294967295;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 

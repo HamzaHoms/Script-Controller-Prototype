@@ -125,7 +125,7 @@ void Process(void*)
 
 	  if(num_rec != num)
 	    {
-	      errs+= (num_rec - num);
+	      errs += (num_rec - num);
 	      err_timestamp[in_err] = us_tick;
 	      in_err++;
 	    }

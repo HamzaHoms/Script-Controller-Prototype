@@ -77,6 +77,13 @@ static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 
 
+void ProcessTaskNotify(void)
+{
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(ProcessTask, &xHigherPriorityTaskWoken);
+}
+
+
 void Process(void*)
 {
   uint8_t num_buf[64];
@@ -84,10 +91,18 @@ void Process(void*)
   uint32_t num = 0;
   uint32_t num_rec;
   uint32_t errs = 0;
-  uint32_t trans_timestamp[1024];
-  uint32_t err_timestamp[1024];
+  uint32_t errs_rc = 0;
+
+  static uint32_t trans_timestamp[1024];
+  static uint32_t err_timestamp[1024];
+  static uint32_t trans_rc_timestamp[1024];
+  static uint32_t err_rc_timestamp[1024];
   uint32_t in_trans = 0;
   uint32_t in_err = 0;
+  uint32_t in_rc_trans = 0;
+  uint32_t in_rc_err = 0;
+  memset(trans_timestamp, 0, 4096);
+  memset(err_timestamp, 0, 4096);
 
   HAL_TIM_Base_Start(&htim5);
   wUART_OpenRXDMA(&wuart2);
@@ -125,20 +140,72 @@ void Process(void*)
 
     }
 
+  wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
+  uint32_t dummy = 0xFFFFFFFF;
+  wUART_WriteTX(&wuart2, (uint8_t*)&dummy, 4);
+
+  ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+
+  wUART_ReadRXFIFO(&wuart2, (uint8_t*)&errs_rc, 4);
+
+
   while(1)
     {
-      uint8_t buf[6] = "DONE\n";
-      USB_WriteTX(&usb, buf, 6);
-
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      if(in_rc_trans < 4096)
+	{
+	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
+	  in_rc_trans += wUART_ReadRXFIFO(&wuart2, (uint8_t*)trans_rc_timestamp + in_rc_trans, 4095-in_rc_trans);
+	  vTaskDelay(pdMS_TO_TICKS(50));
+	}
+      else if(in_rc_err < 4096 && in_rc_trans == 4096)
+	{
+	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
+	  in_rc_err += wUART_ReadRXFIFO(&wuart2, (uint8_t*)err_rc_timestamp + in_rc_err, 4095-in_rc_err);
+	  vTaskDelay(pdMS_TO_TICKS(50));
+	}
+      else if(in_rc_err == 4096 && in_rc_trans == 4096 && FIFO_GetCount(&wuart2._rx_fifo) >= 4)
+	{
+	  uint32_t temp = 0;
+	  wUART_ReadRXFIFO(&wuart2, (uint8_t*)&temp, 4);
+	  if(temp == 0xFFFFFFFF) break;
+	}
     }
+
+  USB_WriteTX(&usb, (uint8_t*)&errs, 4);
+  USB_WriteTX(&usb, (uint8_t*)&errs_rc, 4);
+
+  for(int i = 0; i < 16; i++)
+    {
+      USB_WriteTX(&usb, (uint8_t*)trans_timestamp + i*256, 256);
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+  for(int i = 0; i < 16; i++)
+    {
+      USB_WriteTX(&usb, (uint8_t*)err_timestamp + i*256, 256);
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+  for(int i = 0; i < 16; i++)
+    {
+      USB_WriteTX(&usb, (uint8_t*)trans_rc_timestamp + i*256, 256);
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+  for(int i = 0; i < 16; i++)
+    {
+      USB_WriteTX(&usb, (uint8_t*)err_rc_timestamp + i*256, 256);
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+  while(1)
+    {
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+
 }
 
-void ProcessTaskNotify(void)
-{
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  vTaskNotifyGiveFromISR(ProcessTask, &xHigherPriorityTaskWoken);
-}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/

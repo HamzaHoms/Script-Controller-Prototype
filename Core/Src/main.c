@@ -154,16 +154,16 @@ void Process(void*)
       if(in_rc_trans < 4096)
 	{
 	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
-	  in_rc_trans += wUART_ReadRXFIFO(&wuart2, (uint8_t*)trans_rc_timestamp + in_rc_trans, 4095-in_rc_trans);
-	  vTaskDelay(pdMS_TO_TICKS(50));
+	  in_rc_trans += wUART_ReadRXFIFO(&wuart2, (uint8_t*)trans_rc_timestamp + in_rc_trans, 4096-in_rc_trans);
+	  vTaskDelay(pdMS_TO_TICKS(20));
 	}
       else if(in_rc_err < 4096 && in_rc_trans == 4096)
 	{
 	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
-	  in_rc_err += wUART_ReadRXFIFO(&wuart2, (uint8_t*)err_rc_timestamp + in_rc_err, 4095-in_rc_err);
-	  vTaskDelay(pdMS_TO_TICKS(50));
+	  in_rc_err += wUART_ReadRXFIFO(&wuart2, (uint8_t*)err_rc_timestamp + in_rc_err, 4096-in_rc_err);
+	  vTaskDelay(pdMS_TO_TICKS(20));
 	}
-      else if(in_rc_err == 4095 && in_rc_trans == 4095)
+      else if(in_rc_err == 4096 && in_rc_trans == 4096)
 	{
 	  break;
 	}

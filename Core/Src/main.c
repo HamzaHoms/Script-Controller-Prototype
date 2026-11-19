@@ -105,6 +105,7 @@ void Process(void*)
   memset(err_timestamp, 0, 4096);
 
   HAL_TIM_Base_Start(&htim5);
+  wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
   wUART_OpenRXDMA(&wuart2);
 
   while(1)
@@ -113,15 +114,17 @@ void Process(void*)
 
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-      while(FIFO_GetCount(&usb._rx_fifo) > 0)
+      while(FIFO_GetCount(&wuart2._rx_fifo) > 0)
 	{
 	  uint32_t us_tick = htim5.Instance->CNT;
 
-	  pckt_cnt = USB_ReadRXFIFO(&usb, num_buf, 64);
+	  pckt_cnt = wUART_ReadRXFIFO(&wuart2, num_buf, 64);
 
-	  wUART_WriteTX(&wuart2, num_buf, pckt_cnt);
+	  USB_WriteTX(&usb, num_buf, pckt_cnt);
 
 	  memcpy(&num_rec, num_buf, 4);
+
+	  if(num_rec == 0xFFFFFFFF) break;
 
 	  if(num_rec != num)
 	    {
@@ -140,14 +143,9 @@ void Process(void*)
 
     }
 
-  wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
-  uint32_t dummy = 0xFFFFFFFF;
-  wUART_WriteTX(&wuart2, (uint8_t*)&dummy, 4);
-
   ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
 
   wUART_ReadRXFIFO(&wuart2, (uint8_t*)&errs_rc, 4);
-
 
   while(1)
     {
@@ -167,6 +165,11 @@ void Process(void*)
 	{
 	  break;
 	}
+    }
+
+  while(FIFO_GetCount(&usb._rx_fifo) == 0)
+    {
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
 
   USB_WriteTX(&usb, (uint8_t*)&errs, 4);
@@ -250,7 +253,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   USB_Init(&usb, &hUsbDeviceFS);
-  USB_SetDRCallback(&usb, ProcessTaskNotify);
 
   wUART_Init(&wuart2, &huart2);
 

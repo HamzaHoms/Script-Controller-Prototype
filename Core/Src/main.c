@@ -140,6 +140,8 @@ void Process(void*)
 
     }
 
+  FIFO_Discard(&usb._rx_fifo, FIFO_GetCount(&usb._rx_fifo));
+
   wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
   uint32_t dummy = 0xFFFFFFFF;
   wUART_WriteTX(&wuart2, (uint8_t*)&dummy, 4);
@@ -167,6 +169,11 @@ void Process(void*)
 	{
 	  break;
 	}
+    }
+
+  while(FIFO_GetCount(&usb._rx_fifo) == 0)
+    {
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
 
   USB_WriteTX(&usb, (uint8_t*)&errs, 4);

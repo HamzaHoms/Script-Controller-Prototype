@@ -147,8 +147,8 @@ void Process(void*)
   FIFO_Discard(&usb._rx_fifo, FIFO_GetCount(&usb._rx_fifo));
 
   wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
-  uint32_t dummy = 0xFFFFFFFF;
-  wUART_WriteTX(&wuart2, (uint8_t*)&dummy, U32_SIZE);
+  memset(num_buf, 0xFF, PCKT_SIZE_U32 * U32_SIZE);
+  wUART_WriteTX(&wuart2, num_buf, PCKT_SIZE_U32 * U32_SIZE);
 
   ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
 

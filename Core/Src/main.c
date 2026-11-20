@@ -37,6 +37,10 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define PCKT_SIZE_U32 1
+#define PCKT_COUNT 1024
+#define U32_SIZE 4
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -86,23 +90,23 @@ void ProcessTaskNotify(void)
 
 void Process(void*)
 {
-  uint8_t num_buf[64];
+  uint8_t num_buf[PCKT_SIZE_U32 * U32_SIZE];
   uint32_t pckt_cnt = 0;
   uint32_t num = 0;
   uint32_t num_rec;
   uint32_t errs = 0;
   uint32_t errs_rc = 0;
 
-  static uint32_t trans_timestamp[1024];
-  static uint32_t err_timestamp[1024];
-  static uint32_t trans_rc_timestamp[1024];
-  static uint32_t err_rc_timestamp[1024];
+  static uint32_t trans_timestamp[PCKT_COUNT];
+  static uint32_t err_timestamp[PCKT_COUNT];
+  static uint32_t trans_rc_timestamp[PCKT_COUNT];
+  static uint32_t err_rc_timestamp[PCKT_COUNT];
   uint32_t in_trans = 0;
   uint32_t in_err = 0;
   uint32_t in_rc_trans = 0;
   uint32_t in_rc_err = 0;
-  memset(trans_timestamp, 0, 4096);
-  memset(err_timestamp, 0, 4096);
+  memset(trans_timestamp, 0, PCKT_COUNT * U32_SIZE);
+  memset(err_timestamp, 0, PCKT_COUNT * U32_SIZE);
 
   HAL_TIM_Base_Start(&htim5);
   wUART_OpenRXDMA(&wuart2);
@@ -113,15 +117,15 @@ void Process(void*)
 
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-      while(FIFO_GetCount(&usb._rx_fifo) > 0)
+      while(FIFO_GetCount(&usb._rx_fifo) >= PCKT_SIZE_U32 * U32_SIZE)
 	{
 	  uint32_t us_tick = htim5.Instance->CNT;
 
-	  pckt_cnt = USB_ReadRXFIFO(&usb, num_buf, 64);
+	  pckt_cnt = USB_ReadRXFIFO(&usb, num_buf, PCKT_SIZE_U32 * U32_SIZE);
 
 	  wUART_WriteTX(&wuart2, num_buf, pckt_cnt);
 
-	  memcpy(&num_rec, num_buf, 4);
+	  memcpy(&num_rec, num_buf, U32_SIZE);
 
 	  if(num_rec != num)
 	    {
@@ -133,10 +137,10 @@ void Process(void*)
 	  num = num_rec + 1;
 	  trans_timestamp[in_trans] = us_tick;
 	  in_trans++;
-	  if(in_trans == 1024) break;
+	  if(in_trans == PCKT_COUNT) break;
 	}
 
-      if(in_trans == 1024) break;
+      if(in_trans == PCKT_COUNT) break;
 
     }
 
@@ -144,28 +148,28 @@ void Process(void*)
 
   wUART_SetDRCallback(&wuart2, ProcessTaskNotify);
   uint32_t dummy = 0xFFFFFFFF;
-  wUART_WriteTX(&wuart2, (uint8_t*)&dummy, 4);
+  wUART_WriteTX(&wuart2, (uint8_t*)&dummy, U32_SIZE);
 
   ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
 
-  wUART_ReadRXFIFO(&wuart2, (uint8_t*)&errs_rc, 4);
+  wUART_ReadRXFIFO(&wuart2, (uint8_t*)&errs_rc, U32_SIZE);
 
 
   while(1)
     {
-      if(in_rc_trans < 4096)
+      if(in_rc_trans < (PCKT_COUNT * U32_SIZE))
 	{
 	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
-	  in_rc_trans += wUART_ReadRXFIFO(&wuart2, (uint8_t*)trans_rc_timestamp + in_rc_trans, 4096-in_rc_trans);
+	  in_rc_trans += wUART_ReadRXFIFO(&wuart2, (uint8_t*)trans_rc_timestamp + in_rc_trans, (PCKT_COUNT * U32_SIZE) -in_rc_trans);
 	  vTaskDelay(pdMS_TO_TICKS(20));
 	}
-      else if(in_rc_err < 4096 && in_rc_trans == 4096)
+      else if(in_rc_err < (PCKT_COUNT * U32_SIZE) && in_rc_trans == (PCKT_COUNT * U32_SIZE))
 	{
 	  if(FIFO_GetCount(&wuart2._rx_fifo) == 0) continue;
-	  in_rc_err += wUART_ReadRXFIFO(&wuart2, (uint8_t*)err_rc_timestamp + in_rc_err, 4096-in_rc_err);
+	  in_rc_err += wUART_ReadRXFIFO(&wuart2, (uint8_t*)err_rc_timestamp + in_rc_err, (PCKT_COUNT * U32_SIZE) -in_rc_err);
 	  vTaskDelay(pdMS_TO_TICKS(20));
 	}
-      else if(in_rc_err == 4096 && in_rc_trans == 4096)
+      else if(in_rc_err == (PCKT_COUNT * U32_SIZE) && in_rc_trans == (PCKT_COUNT * U32_SIZE))
 	{
 	  break;
 	}
@@ -179,25 +183,25 @@ void Process(void*)
   USB_WriteTX(&usb, (uint8_t*)&errs, 4);
   USB_WriteTX(&usb, (uint8_t*)&errs_rc, 4);
 
-  for(int i = 0; i < 16; i++)
+  for(int i = 0; i < ((PCKT_COUNT * U32_SIZE) / 256); i++)
     {
       USB_WriteTX(&usb, (uint8_t*)trans_timestamp + i*256, 256);
       vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-  for(int i = 0; i < 16; i++)
+  for(int i = 0; i < ((PCKT_COUNT * U32_SIZE) / 256); i++)
     {
       USB_WriteTX(&usb, (uint8_t*)err_timestamp + i*256, 256);
       vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-  for(int i = 0; i < 16; i++)
+  for(int i = 0; i < ((PCKT_COUNT * U32_SIZE) / 256); i++)
     {
       USB_WriteTX(&usb, (uint8_t*)trans_rc_timestamp + i*256, 256);
       vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-  for(int i = 0; i < 16; i++)
+  for(int i = 0; i < ((PCKT_COUNT * U32_SIZE) / 256); i++)
     {
       USB_WriteTX(&usb, (uint8_t*)err_rc_timestamp + i*256, 256);
       vTaskDelay(pdMS_TO_TICKS(10));
@@ -485,7 +489,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 500000;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;

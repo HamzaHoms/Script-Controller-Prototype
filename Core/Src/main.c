@@ -150,6 +150,7 @@ void Process(void*)
 	  memcpy(&dummy, num_buf, U32_SIZE);
 	  if(dummy == 0xFFFFFFFF)
 	    {
+	      FIFO_Discard(&wuart2._rx_fifo, FIFO_GetCount(&wuart2._rx_fifo));
 	      wUART_WriteTX(&wuart2, (uint8_t*)(&dummy), U32_SIZE);
 	      break;
 	    }
@@ -160,6 +161,7 @@ void Process(void*)
       if(in_trans == PCKT_COUNT) break;
 
     }
+
 
   ulTaskNotifyTake(pdTRUE, 0);
 

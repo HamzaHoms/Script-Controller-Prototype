@@ -161,7 +161,12 @@ void Process(void*)
 
     }
 
-  ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+  ulTaskNotifyTake(pdTRUE, 0);
+
+  while(FIFO_GetCount(&wuart2._rx_fifo) < U32_SIZE)
+    {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    }
 
   wUART_ReadRXFIFO(&wuart2, (uint8_t*)&errs_rc, U32_SIZE);
 
